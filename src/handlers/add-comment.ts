@@ -18,6 +18,30 @@ export async function addCommentToIssue(context: Context, message: string, optio
   const repo = payload.repository.name;
 
   try {
+    const stateId = "comment-" + Date.now();
+    // Dispatch comment event before creating GitHub comment
+    await context.octokit.rest.repos.createDispatchEvent({
+      owner: context.payload.repository.owner.login,
+      repo: context.payload.repository.name,
+      event_type: options?.inReplyTo ? "comment-updated" : "comment-created",
+      client_payload: {
+        state_id: stateId,
+        output: JSON.stringify({
+          operation: options?.inReplyTo ? "update" : "create",
+          content: message,
+          ...(options?.inReplyTo?.commentId && { commentId: options.inReplyTo.commentId.toString() }),
+          location: {
+            source: "github",
+            repositoryId: `${context.payload.repository.owner.login}/${context.payload.repository.name}`,
+            issueNumber: "issue" in context.payload ? context.payload.issue.number : undefined,
+            pullRequestNumber: "pull_request" in context.payload ? context.payload.pull_request.number : undefined,
+          },
+        }),
+      },
+    });
+
+    context.logger.info("Dispatched comment event to kernel", { stateId });
+
     // If this is a pull request review comment
     if (options?.inReplyTo) {
       let pullNumber: number | undefined;

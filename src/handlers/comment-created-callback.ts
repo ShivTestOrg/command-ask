@@ -22,6 +22,27 @@ export async function processCommentCallback(context: Context<"issue_comment.cre
   }
 
   try {
+    const stateId = "comment-" + Date.now();
+    await context.octokit.rest.repos.createDispatchEvent({
+      owner: context.payload.repository.owner.login,
+      repo: context.payload.repository.name,
+      event_type: "comment-created",
+      client_payload: {
+        state_id: stateId,
+        output: JSON.stringify({
+          operation: "create",
+          content: question,
+          location: {
+            source: "github",
+            repositoryId: `${context.payload.repository.owner.login}/${context.payload.repository.name}`,
+            issueNumber: "issue" in context.payload ? context.payload.issue.number : undefined,
+            pullRequestNumber: "pull_request" in context.payload ? context.payload.pull_request.number : undefined,
+          },
+        }),
+      },
+    });
+
+    context.logger.info("Dispatched comment event to kernel", { stateId });
     // Determine if this is a pull request review comment by checking the event type
     const isPullRequestReviewComment = context.eventName === "pull_request_review_comment.created";
 
