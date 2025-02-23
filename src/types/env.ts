@@ -19,8 +19,6 @@ export const envSchema = T.Object({
   OPENROUTER_API_KEY: T.String(),
   KERNEL_PUBLIC_KEY: T.String(),
   LOG_LEVEL: T.Optional(T.String()),
-  // Comment Webhook Configuration
-  COMMENT_WEBHOOK_URL: T.String(),
 });
 
 export type Env = StaticDecode<typeof envSchema>;
