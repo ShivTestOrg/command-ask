@@ -2,6 +2,7 @@ import { Context } from "../types";
 import { addCommentToIssue } from "../handlers/add-comment";
 import { ParsedDriveLink } from "../types/google";
 import { GoogleDriveClient } from "../adapters/google/helpers/google-drive";
+import { GoogleDocPage, GoogleSheet, GoogleSlide } from "../types/google";
 import ms from "ms";
 
 const POLL_INTERVAL = 25000; // 25 seconds
@@ -104,17 +105,87 @@ export async function checkAccessStatus(drive: GoogleDriveClient, links: DriveLi
 /**
  * Format access request message
  */
-export function formatAccessRequestMessage(context: Context, links: DriveLink[]): string {
+export function formatAccessRequestMessage(context: Context, links: DriveLink[]): string | undefined {
   const linksNeedingPermission = links.filter((link) => link.requiresPermission);
 
   if (linksNeedingPermission.length === 0) {
-    return "";
+    return;
   }
 
   const fileList = linksNeedingPermission.map((link) => `- ${link.url}`).join("\n");
   const serviceAccountEmail = JSON.parse(context.env.GOOGLE_SERVICE_ACCOUNT_KEY).client_email;
 
   return `I need access to continue. Please share these files with ${serviceAccountEmail}:\n\n${fileList}\n\nI'll wait up to ${ms(MAX_POLL_TIME, { long: true })} for access to be granted.`;
+}
+
+/**
+ * Parse Google Doc content
+ */
+function parseDocContent(pages: GoogleDocPage[]): string {
+  return pages
+    .map((page) => {
+      const pageContent = `Page ${page.pageNumber}:\n${page.content || ""}`;
+      if (!page.tables?.length) return pageContent;
+
+      const tableContent = "\n\nTables:\n" + page.tables.map((table) => table.data.map((row) => row.join("\t")).join("\n")).join("\n\n");
+      return pageContent + tableContent;
+    })
+    .join("\n\n");
+}
+
+/**
+ * Parse Google Sheet content
+ */
+function parseSheetContent(sheets: GoogleSheet[]): string {
+  return sheets.map((sheet) => `Sheet "${sheet.name}":\n${sheet.data.map((row) => row.join("\t")).join("\n")}`).join("\n\n");
+}
+
+/**
+ * Parse Google Slides content
+ */
+function parseSlidesContent(slides: GoogleSlide[]): string {
+  return slides
+    .map((slide) => {
+      const titleText = slide.title ? ` - ${slide.title}` : "";
+      return `Slide ${slide.slideNumber}${titleText}:\n${slide.textContent || ""}`;
+    })
+    .join("\n\n");
+}
+
+/**
+ * Parse content based on its type
+ */
+function parseContent(driveContent: ParsedDriveLink): string | undefined {
+  if (!driveContent.content) return;
+
+  // Handle base64 content
+  if (driveContent.isBase64 && driveContent.metadata.name) {
+    if (driveContent.fileType === "image") {
+      return driveContent.content as string;
+    }
+    const contentStr = driveContent.content as string;
+    const FILE_SIZE_KB = Math.round((contentStr.length * 3) / 4 / 1024);
+    return `File "${driveContent.metadata.name}" (${driveContent.fileType}, ${FILE_SIZE_KB}KB)`;
+  }
+
+  // Handle structured content
+  if (driveContent.isStructured && typeof driveContent.content === "object") {
+    const structuredContent = driveContent.content;
+    if ("pages" in structuredContent && structuredContent.pages) {
+      return parseDocContent(structuredContent.pages);
+    }
+    if ("sheets" in structuredContent && structuredContent.sheets) {
+      return parseSheetContent(structuredContent.sheets);
+    }
+    if ("slides" in structuredContent && structuredContent.slides) {
+      return parseSlidesContent(structuredContent.slides);
+    }
+  }
+
+  // Handle plain text content
+  if (typeof driveContent.content === "string") {
+    return driveContent.content;
+  }
 }
 
 /**
@@ -131,57 +202,21 @@ export async function getDriveContents(context: Context, links: DriveLink[]): Pr
   context.logger.info(`Fetching content for ${links.length} Drive files`);
 
   for (const link of links) {
-    context.logger.info(`Fetching content for ${link.url}`);
+    context.logger.debug(`Fetching content for ${link.url}`);
     try {
-      const driveContent = link.data || (await google.drive.parseDriveLink(link.url));
-      context.logger.info(`Parsed Drive link: ${JSON.stringify(driveContent)}`);
+      const parsedDriveContent = link.data || (await google.drive.parseDriveLink(link.url));
+      if (!parsedDriveContent.isAccessible || !parsedDriveContent.content) continue;
 
-      if (driveContent.isAccessible && driveContent.content) {
-        context.logger.info(`Fetched content for "${driveContent.metadata.name}" with type ${driveContent.fileType}`);
-        let content = "";
+      const content = parseContent(parsedDriveContent);
+      context.logger.debug(`Content for ${link.url}: ${content}`);
+      if (!content) continue;
 
-        if (driveContent.isStructured && typeof driveContent.content === "object") {
-          if (driveContent.content.pages) {
-            // Google Docs
-            content = driveContent.content.pages
-              .map((page) => {
-                let pageContent = `Page ${page.pageNumber}:\n${page.content || ""}`;
-                if (page.tables?.length) {
-                  pageContent += "\n\nTables:\n" + page.tables.map((table) => table.data.map((row) => row.join("\t")).join("\n")).join("\n\n");
-                }
-                return pageContent;
-              })
-              .join("\n\n");
-          } else if (driveContent.content.sheets) {
-            // Google Sheets
-            content = driveContent.content.sheets.map((sheet) => `Sheet "${sheet.name}":\n${sheet.data.map((row) => row.join("\t")).join("\n")}`).join("\n\n");
-          } else if (driveContent.content.slides) {
-            // Google Slides
-            content = driveContent.content.slides
-              .map((slide) => {
-                const titleText = slide.title ? ` - ${slide.title}` : "";
-                return `Slide ${slide.slideNumber}${titleText}:\n${slide.textContent || ""}`;
-              })
-              .join("\n\n");
-          }
-        } else if (driveContent.isBase64) {
-          if (driveContent.fileType === "image") {
-            content = driveContent.content as string;
-          } else {
-            const contentStr = driveContent.content as string;
-            const FILE_SIZE_KB = Math.round((contentStr.length * 3) / 4 / 1024);
-            content = `File "${driveContent.metadata.name}" (${driveContent.fileType}, ${FILE_SIZE_KB}KB)`;
-          }
-        } else if (typeof driveContent.content === "string") {
-          content = driveContent.content;
-        }
-
-        const match = link.url.match(/\/d\/([^/]+)/);
-        driveContents.push({
-          name: match ? `document-${match[1]}` : link.url,
-          content: `Content of "${driveContent.metadata.name}":\n${content}`,
-        });
-      }
+      const documentId = link.url.match(/\/d\/([^/]+)/)?.[1];
+      const name = documentId ? `document-${documentId}` : link.url;
+      driveContents.push({
+        name,
+        content: `Content of "${parsedDriveContent.metadata.name || name}":\n${content}`,
+      });
     } catch (error) {
       context.logger.error(`Failed to fetch content for ${link.url}: ${error}`);
       continue;
@@ -221,7 +256,7 @@ export async function handleDrivePermissions(
   }
 
   // If any links need permission, start polling flow
-  const accessMessage = formatAccessRequestMessage(context, driveLinks); // Pass context here
+  const accessMessage = formatAccessRequestMessage(context, driveLinks);
   context.logger.info(`Access message: ${accessMessage}`);
 
   if (accessMessage) {

@@ -1,7 +1,17 @@
 import { drive_v3 } from "googleapis";
 import { Context } from "../../../types";
 import { parseOfficeAsync } from "officeparser";
-import { DocumentContent, DriveFileMetadata, DriveFileType, ParsedDriveLink, ParsedOfficeContent } from "../../../types/google";
+import {
+  DocumentContent,
+  DriveDocumentContent,
+  DriveFileMetadata,
+  DriveFileType,
+  DriveImageContent,
+  DriveSheetContent,
+  DriveSlideContent,
+  ParsedDriveLink,
+  ParsedOfficeContent,
+} from "../../../types/google";
 import { SuperGoogle } from "./google";
 
 const GOOGLE_APPS = "google-apps";
@@ -123,7 +133,9 @@ export class GoogleDriveClient extends SuperGoogle {
     fileType: DriveFileType,
     mimeType: string,
     name: string
-  ): Promise<{ content: string; documentContent: DocumentContent } | undefined> {
+  ): Promise<
+    { content: string; documentContent: DocumentContent | DriveDocumentContent | DriveSheetContent | DriveSlideContent | DriveImageContent } | undefined
+  > {
     try {
       const response = mimeType.includes(GOOGLE_APPS)
         ? await this.client.files.export(
@@ -142,16 +154,17 @@ export class GoogleDriveClient extends SuperGoogle {
 
       // Handle image files specially
       if (fileType === "image") {
+        const imageContent: DriveImageContent = {
+          image: [
+            {
+              content,
+              title: name,
+            },
+          ],
+        };
         return {
           content,
-          documentContent: {
-            image: [
-              {
-                content,
-                title: name,
-              },
-            ],
-          },
+          documentContent: imageContent,
         };
       }
 
@@ -160,42 +173,44 @@ export class GoogleDriveClient extends SuperGoogle {
 
         // Handle string content (plain text)
         if (typeof parsedContent === "string") {
+          const docContent: DriveDocumentContent = {
+            pages: [{ pageNumber: 1, content: parsedContent }],
+            rawContent: content,
+          };
           return {
             content,
-            documentContent: {
-              pages: [{ pageNumber: 1, content: parsedContent }],
-              rawContent: content,
-            },
+            documentContent: docContent,
           };
         }
 
         // Handle sheets
         if (parsedContent.sheets) {
+          const sheetContent: DriveSheetContent = {
+            sheets: parsedContent.sheets.map((sheet, index) => ({
+              name: sheet.name || `Sheet ${index + 1}`,
+              data: sheet.data.map((row) => row.map((cell) => String(cell))),
+            })),
+            rawContent: content,
+          };
           return {
             content,
-            documentContent: {
-              sheets: parsedContent.sheets.map((sheet, index) => ({
-                name: sheet.name || `Sheet ${index + 1}`,
-                data: sheet.data.map((row) => row.map((cell) => String(cell))),
-              })),
-              rawContent: content,
-            },
+            documentContent: sheetContent,
           };
         }
 
         // Handle slides
         if (parsedContent.slides) {
+          const slideContent: DriveSlideContent = {
+            slides: parsedContent.slides.map((slide, index) => ({
+              slideNumber: index + 1,
+              title: slide.title || "",
+              textContent: slide.content || "",
+            })),
+            rawContent: content,
+          };
           return {
             content,
-            documentContent: {
-              slides: parsedContent.slides.map((slide, index) => ({
-                slideNumber: index + 1,
-                title: slide.title || "",
-                textContent: slide.content || "",
-                images: [],
-              })),
-              rawContent: content,
-            },
+            documentContent: slideContent,
           };
         }
 
@@ -203,17 +218,18 @@ export class GoogleDriveClient extends SuperGoogle {
         throw new Error("Unexpected file format");
       } catch (error) {
         this.context.logger.error(`Error parsing ${fileType} file: ${error}`);
+        const docContent: DriveDocumentContent = {
+          pages: [
+            {
+              pageNumber: 1,
+              content: `Unable to extract readable content from ${fileType.toUpperCase()} file. Size: ${buffer.length} bytes.`,
+            },
+          ],
+          rawContent: content,
+        };
         return {
           content,
-          documentContent: {
-            pages: [
-              {
-                pageNumber: 1,
-                content: `Unable to extract readable content from ${fileType.toUpperCase()} file. Size: ${buffer.length} bytes.`,
-              },
-            ],
-            rawContent: content,
-          },
+          documentContent: docContent,
         };
       }
     } catch (error) {

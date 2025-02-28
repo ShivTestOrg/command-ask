@@ -7,7 +7,7 @@ import { handleDrivePermissions } from "../helpers/drive-link-handler";
 
 export async function processCommentCallback(context: Context<"issue_comment.created" | "pull_request_review_comment.created">): Promise<CallbackResult> {
   const { logger, command, payload } = context;
-  let question = "";
+  let question;
 
   if (payload.comment.user?.type === "Bot") {
     throw logger.error("Comment is from a bot. Skipping.");
