@@ -111,6 +111,10 @@ export function formatAccessRequestMessage(context: Context, links: DriveLink[])
     return;
   }
 
+  if (!context.env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+    return "I need access to continue, but the Google Service Account key is missing from the environment.";
+  }
+
   const fileList = linksNeedingPermission.map((link) => `- ${link.url}`).join("\n");
   const serviceAccountEmail = JSON.parse(context.env.GOOGLE_SERVICE_ACCOUNT_KEY).client_email;
 

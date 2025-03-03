@@ -271,18 +271,12 @@ export class GoogleDriveClient extends SuperGoogle {
    * Parse a Google Drive link and extract file information
    */
   private _handlePermissionError(fileId: string): ParsedDriveLink {
-    const serviceAccountEmail = JSON.parse(this.context.env.GOOGLE_SERVICE_ACCOUNT_KEY).client_email;
-    const accessMessage = serviceAccountEmail
-      ? `Please share the file with ${serviceAccountEmail} to grant access.`
-      : "Please ensure the file is shared with the service account (contact administrator for the email address).";
-
     return {
       fileId,
       fileType: "unknown",
       isAccessible: false,
       metadata: {
         id: fileId,
-        accessMessage,
       },
     };
   }
@@ -316,12 +310,7 @@ export class GoogleDriveClient extends SuperGoogle {
     try {
       const metadataResponse = await this._getFileMetadata(fileId);
       if (!metadataResponse?.mimeType || !metadataResponse?.name || !metadataResponse?.id) {
-        return {
-          fileId,
-          fileType: "unknown",
-          isAccessible: false,
-          metadata: { id: fileId },
-        };
+        return this._handlePermissionError(fileId);
       }
 
       const { mimeType, name, id } = metadataResponse;
