@@ -20,6 +20,10 @@ export async function plugin(context: Context) {
   };
   const openaiClient = new OpenAI(openAiObject);
   if (config.processDriveLinks && config.processDriveLinks === true) {
+    if (!env.GOOGLE_SERVICE_ACCOUNT_KEY) {
+      throw new Error("Google service account key not found");
+    }
+
     const credentials = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_KEY);
 
     if (!credentials || typeof credentials !== "object" || !credentials.client_email || !credentials.private_key) {
