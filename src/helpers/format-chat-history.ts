@@ -558,7 +558,7 @@ export async function formatChatHistory(
   driveContents?: DriveContents[]
 ): Promise<string[]> {
   const { logger } = context;
-  const { tree, tokenLimits } = await buildChatHistoryTree(context, maxDepth, similarComments, similarIssues);
+  const { tree, tokenLimits } = await buildChatHistoryTree(context, maxDepth, similarComments, similarIssues, driveContents);
 
   if (!tree) {
     return ["No main issue found."];
