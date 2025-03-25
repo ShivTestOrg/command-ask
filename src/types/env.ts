@@ -23,3 +23,20 @@ export const envSchema = T.Object({
 });
 
 export type Env = StaticDecode<typeof envSchema>;
+
+declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace
+  namespace NodeJS {
+    interface ProcessEnv {
+      OPENAI_API_KEY: string;
+      UBIQUITY_OS_APP_NAME: string;
+      VOYAGEAI_API_KEY: string;
+      SUPABASE_URL: string;
+      SUPABASE_KEY: string;
+      OPENROUTER_API_KEY: string;
+      KERNEL_PUBLIC_KEY?: string;
+      LOG_LEVEL?: string;
+      GOOGLE_SERVICE_ACCOUNT_KEY: string;
+    }
+  }
+}

@@ -2,6 +2,7 @@ import { Context } from "../types";
 import { CallbackResult } from "../types/proxy";
 import { askQuestion } from "./ask-llm";
 import { handleDrivePermissions } from "../helpers/drive-link-handler";
+import { CallbackUrlHandler } from "../helpers/callback-url";
 
 export async function processCommentCallback(context: Context<"issue_comment.created" | "pull_request_review_comment.created">): Promise<CallbackResult> {
   const { logger, command, payload, config } = context;
@@ -19,7 +20,15 @@ export async function processCommentCallback(context: Context<"issue_comment.cre
     return { status: 200, reason: logger.info("No question found in comment. Skipping.").logMessage.raw };
   }
 
-  await context.commentHandler.postComment(context, context.logger.ok("Thinking..."), { updateComment: true });
+  let callbackHandler: CallbackUrlHandler | undefined;
+
+  // @ts-expect-error - authType is not defined in the plugin-sdk
+  if (context.authType === "header") {
+    callbackHandler = new CallbackUrlHandler(context);
+    await callbackHandler.postInitialMessage("Thinking...");
+  } else {
+    await context.commentHandler.postComment(context, context.logger.ok("Thinking..."), { updateComment: true });
+  }
 
   let driveContents;
   if (config.processDriveLinks) {
@@ -37,13 +46,18 @@ export async function processCommentCallback(context: Context<"issue_comment.cre
     throw logger.error(`No answer from OpenAI`);
   }
 
-  await context.commentHandler.postComment(
-    context,
-    context.logger.ok(answer, {
-      groundTruths,
-      tokenUsage,
-    }),
-    { raw: true, updateComment: true }
-  );
-  return { status: 200, reason: logger.info("Comment posted successfully").logMessage.raw };
+  if (callbackHandler) {
+    await callbackHandler.updateMessage(answer, tokenUsage, groundTruths);
+    return { status: 200, reason: logger.info("Comment sent to callback URL successfully").logMessage.raw };
+  } else {
+    await context.commentHandler.postComment(
+      context,
+      context.logger.ok(answer, {
+        groundTruths,
+        tokenUsage,
+      }),
+      { raw: true, updateComment: true }
+    );
+    return { status: 200, reason: logger.info("Comment posted successfully").logMessage.raw };
+  }
 }
