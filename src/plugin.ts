@@ -7,9 +7,13 @@ import { callCallbacks } from "./helpers/callback-proxy";
 import { processCommentCallback } from "./handlers/comment-created-callback";
 import { GoogleAuth } from "google-auth-library";
 import { google } from "googleapis";
+import { CommentService } from "./helpers/comment-service";
 
 export async function plugin(context: Context) {
   const { env, config } = context;
+
+  // Initialize CommentService
+  context.commentService = new CommentService(context);
   const supabase = createClient(env.SUPABASE_URL, env.SUPABASE_KEY);
   const voyageClient = new VoyageAIClient({
     apiKey: env.VOYAGEAI_API_KEY,
@@ -23,7 +27,7 @@ export async function plugin(context: Context) {
     const credentials = JSON.parse(env.GOOGLE_SERVICE_ACCOUNT_KEY);
 
     if (!credentials || typeof credentials !== "object" || !credentials.client_email || !credentials.private_key) {
-      throw context.logger.error("Invalid Google Service Account key. Exiting.");
+      await context.commentService.handleError("Invalid Google Service Account key. Exiting.");
     }
 
     const auth = new GoogleAuth({

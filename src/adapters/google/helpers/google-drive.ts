@@ -156,17 +156,7 @@ export class GoogleDriveClient extends SuperGoogle {
         },
       };
     } catch (error) {
-      this.context.logger.error(`Error parsing ${fileType} file: ${error}`);
-      return {
-        documentContent: {
-          pages: [
-            {
-              pageNumber: 1,
-              content: `Unable to extract readable content from ${fileType.toUpperCase()} file. Size: ${buffer.length} bytes.`,
-            },
-          ],
-        },
-      };
+      throw new Error(`Error parsing ${fileType} file: ${error}`);
     }
   }
 
@@ -175,7 +165,7 @@ export class GoogleDriveClient extends SuperGoogle {
    */
   private _createFileMetadata(responseData: drive_v3.Schema$File, id: string, mimeType: string): DriveFileMetadata {
     if (!responseData) {
-      throw new Error("Invalid response data");
+      throw this.context.commentService.handleError("Invalid response data");
     }
 
     return {
@@ -242,7 +232,7 @@ export class GoogleDriveClient extends SuperGoogle {
   async parseDriveLink(url: string): Promise<ParsedDriveLink> {
     const fileId = this._extractFileId(url);
     if (!fileId) {
-      throw new Error("Invalid Google Drive URL");
+      throw this.context.commentService.handleError("Invalid Google Drive URL");
     }
 
     try {

@@ -207,10 +207,8 @@ export async function handleDrivePermissions(
   if (accessMessage) {
     context.logger.info("Some links require permission, starting polling flow");
     // Post access request message
-    await context.commentHandler.postComment(
-      context,
-      context.logger.ok(`${accessMessage}\n\nPlease grant access to the Google Drive files. I'll check again in ${POLL_INTERVAL / 1000} seconds.`),
-      { updateComment: true }
+    await context.commentService.updateComment(
+      `${accessMessage}\n\nPlease grant access to the Google Drive files. I'll check again in ${POLL_INTERVAL / 1000} seconds.`
     );
     const startTime = Date.now();
     let hasAccess = false;
@@ -233,15 +231,13 @@ export async function handleDrivePermissions(
 
     if (!hasAccess) {
       context.logger.warn("Access not granted within time limit");
-      await context.commentHandler.postComment(context, context.logger.error("Access not granted within time limit"), { updateComment: true });
+      await context.commentService.updateComment("Access not granted within time limit");
       return { hasPermission: false, message: "Access not granted within time limit." };
     }
 
     context.logger.info("Access granted to all Google Drive files");
     // Post access granted message
-    await context.commentHandler.postComment(context, context.logger.ok("Access granted to all Google Drive files. Proceeding with the request."), {
-      updateComment: true,
-    });
+    await context.commentService.updateComment("Access granted to all Google Drive files. Proceeding with the request.");
   }
 
   context.logger.info("Fetching contents of accessible Drive files");

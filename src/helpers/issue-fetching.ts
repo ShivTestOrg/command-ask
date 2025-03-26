@@ -1,4 +1,4 @@
-import { Context } from "@ubiquity-os/plugin-sdk";
+import { Context } from "../types";
 import {
   CommentIssueSearchResult,
   FetchParams,
