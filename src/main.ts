@@ -6,12 +6,14 @@ import { Command } from "./types/command";
 import { SupportedEvents } from "./types/context";
 import { Env, envSchema } from "./types/env";
 import { PluginSettings, pluginSettingsSchema } from "./types/plugin-input";
+import { CommentService } from "./helpers/comment-service";
 
 createActionsPlugin<PluginSettings, Env, Command, SupportedEvents>(
   (context) => {
     return plugin({
       ...context,
       adapters: {} as ReturnType<typeof createAdapters>,
+      commentService: {} as unknown as CommentService,
     });
   },
   {
