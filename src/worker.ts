@@ -9,6 +9,7 @@ import { Command } from "./types/command";
 import { SupportedEvents } from "./types/context";
 import { Env, envSchema } from "./types/env";
 import { PluginSettings, pluginSettingsSchema } from "./types/plugin-input";
+import { CommentService } from "./helpers/comment-service";
 
 export default {
   async fetch(request: Request, env: Env, executionCtx?: ExecutionContext) {
@@ -17,6 +18,7 @@ export default {
         return plugin({
           ...context,
           adapters: {} as ReturnType<typeof createAdapters>,
+          commentService: {} as unknown as CommentService,
         });
       },
       manifest as Manifest,
