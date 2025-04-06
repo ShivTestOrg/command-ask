@@ -11,140 +11,14 @@ jobs:
     permissions: write-all
 
     steps:
-      - name: Check out the repository
-        uses: actions/checkout@v4
+      - name: Update Manifest and Commit Changes
+        uses: Meniole/action-deploy-plugin@meniole-main
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
         with:
-          node-version: ${{ inputs.nodeVersion }}
-
-      - uses: oven-sh/setup-bun@v2
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          bun install --frozen-lockfile
-
-      - name: Build project
-        shell: bash
-        run: |
-          bun add -DE @vercel/ncc
-          echo "Compiling plugin..."
-          bun ncc build ${{ inputs.pluginEntry }} --external "./tests" -m ${{ inputs.sourcemap == 'true' && '-s' || '' }} -o dist
-          echo "Compiling plugin types..."
-          bun ncc build ${{ inputs.schemaPath }} --external "./tests" -m -o plugin
-
-      - name: Replace __dirname with import.meta.dirname
-        if: ${{ inputs.treatAsEsm }}
-        shell: bash
-        run: |
-          if [ "${{ inputs.treatAsEsm }}" = "true" ]; then
-            sed -i 's/__dirname/import.meta.dirname/g' "${{ github.workspace }}/dist/index.js"
-          fi
-
-      - name: Update manifest configuration JSON
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const fs = require('fs').promises;
-            const path = require('path');
-
-            async function updateManifest() {
-              const manifestPath = '${{ inputs.manifestPath }}';
-              const pluginPath = path.resolve('${{ github.workspace }}', 'plugin', 'index.js');
-
-              let pluginSettingsSchema;
-              try {
-                // First, try to load as ESM
-                try {
-                  const pluginModule = await import(`file://${pluginPath}`);
-                  pluginSettingsSchema = pluginModule.pluginSettingsSchema;
-
-                  if (!pluginSettingsSchema) {
-                    throw new Error('pluginSettingsSchema not found in the ESM module');
-                  }
-                } catch (esmError) {
-                  // If ESM import fails, try loading as CJS
-                  try {
-                    const pluginModule = require(pluginPath);
-                    pluginSettingsSchema = pluginModule.pluginSettingsSchema;
-
-                    if (!pluginSettingsSchema) {
-                      throw new Error('pluginSettingsSchema not found in the CJS module');
-                    }
-                  } catch (cjsError) {
-                    console.error('Error loading module as ESM and CJS:', esmError, cjsError);
-                    process.exit(1);
-                  }
-                }
-              } catch (error) {
-                console.error('Error loading module:', error);
-                process.exit(1);
-              }
-
-              const manifest = JSON.parse(await fs.readFile(manifestPath, 'utf8'));
-              manifest["configuration"] = pluginSettingsSchema;
-
-              function customReviver(key, value) {
-                if (typeof value === "object" && value !== null) {
-                  if ("properties" in value && "required" in value) {
-                    const requiredFields = new Set(value.required);
-                    for (const [propKey, propValue] of Object.entries(value.properties)) {
-                      if (typeof propValue === 'object' && 'default' in propValue) {
-                        requiredFields.delete(propKey);
-                      }
-                    }
-                    value.required = Array.from(requiredFields);
-                    if (value.required.length === 0) {
-                      delete value.required;
-                    }
-                  }
-
-                  // Recursively apply to nested objects and arrays
-                  if (Array.isArray(value)) {
-                    return value.map(item => JSON.parse(JSON.stringify(item), customReviver));
-                  } else {
-                    return Object.fromEntries(
-                      Object.entries(value).map(([k, v]) => [k, JSON.parse(JSON.stringify(v), customReviver)])
-                    );
-                  }
-                }
-                return value;
-              }
-
-              const updatedManifest = JSON.stringify(manifest, customReviver, 2);
-              await fs.writeFile(manifestPath, updatedManifest, 'utf8');
-            }
-            updateManifest();
-
-      - name: Format manifest using Prettier
-        shell: bash
-        run: |
-          bun add -DE prettier
-          bun prettier --write .
-
-      - name: Get GitHub App token
-        if: env.APP_ID != '' && env.APP_PRIVATE_KEY != ''
-        uses: actions/create-github-app-token@v1
-        id: get_installation_token
-        with:
-          app-id: ${{ env.APP_ID }}
-          private-key: ${{ env.APP_PRIVATE_KEY }}
-
-      - name: Stage Changes
-        id: stage_changes
-        shell: bash
-        run: |
-          git add "${{ inputs.manifestPath }}"
-          find ${{ github.workspace }}/dist \( -name "*.js" -o -name "*.cjs" -o -name "*.map" -o -name "*.json" \) -print0 | xargs -0 git add -f
-          git diff --cached --quiet || echo "staged=true" >> $GITHUB_OUTPUT
-
-      - name: Update manifest.json and dist folder
-        if: steps.stage_changes.outputs.staged == 'true'
-        uses: dsanders11/github-app-commit-action@v1.5.0
-        with:
-          message: ${{ inputs.commitMessage }}
-          force: true
-          token: ${{ steps.get_installation_token.outputs.token || github.token }}
-          ref: ${{ github.ref_name }}
+          treatAsEsm: true
+          sourcemap: false
+          pluginEntry: ${{ github.workspace }}/src/main.ts
+          commitMessage: "chore: updated manifest.json and dist build"
+          nodeVersion: "20.10.0"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
