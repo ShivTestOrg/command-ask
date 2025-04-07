@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Update Manifest and Commit Changes
-        uses: Meniole/action-deploy-plugin@main
+        uses: ShivTestOrg/action-deploy-plugin@main
 
         with:
           treatAsEsm: true
